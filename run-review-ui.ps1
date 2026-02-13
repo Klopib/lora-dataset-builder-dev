@@ -15,6 +15,22 @@ $ErrorActionPreference = "Stop"
 
 if (-not (Test-Path $ImageDir)) { throw "ImageDir not found: $ImageDir" }
 
+function Stop-ExistingReviewUI {
+  param([int]$Port)
+
+  $ids = docker ps --filter "publish=$Port" --format "{{.ID}}"
+  $ids = @($ids) | Where-Object { $_ }
+  if ($ids.Count -eq 0) { return }
+
+  foreach ($id in $ids) {
+    Write-Host "Stopping existing container on port $Port ($id)..." -ForegroundColor Yellow
+    docker rm -f $id | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+      throw "Failed to stop container $id on port $Port"
+    }
+  }
+}
+
 if (Test-Path $RegistryPath) {
   try {
     $reg = Get-Content $RegistryPath | ConvertFrom-Json
@@ -45,6 +61,8 @@ if (Test-Path $RegistryPath) {
 } else {
   Write-Host "Registry $RegistryPath not found; skipping reservation check." -ForegroundColor Yellow
 }
+
+Stop-ExistingReviewUI -Port $Port
 
 $capsJson = Join-Path $ImageDir "captions.json"
 $capsCsv  = Join-Path $ImageDir "captions.csv"
