@@ -1,0 +1,23 @@
+services:
+  florence-2:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: florence-2
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      - C:/AI/lora-dataset-builder/data:/workspace/data
+      - C:/AI/models_master/huggingface:/root/.cache/huggingface
+      - C:/AI/models_master/torch:/root/.cache/torch
+    environment:
+      - HF_TOKEN=${HF_TOKEN:-}
+      - FLORENCE_MODEL_ID=microsoft/Florence-2-large
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]

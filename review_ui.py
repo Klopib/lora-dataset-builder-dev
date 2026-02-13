@@ -1,0 +1,275 @@
+import argparse
+import csv
+import json
+import os
+import time
+
+import gradio as gr
+
+# Patch gradio_client bool schema handling (avoids API info crash in some versions).
+try:
+    from gradio_client import utils as gc_utils
+
+    _orig_get_type = gc_utils.get_type
+    _orig_json_schema_to_python_type = gc_utils._json_schema_to_python_type
+
+    def _get_type_patched(schema):
+        if isinstance(schema, bool):
+            return "any"
+        return _orig_get_type(schema)
+
+    def _json_schema_to_python_type_patched(schema, defs):
+        if isinstance(schema, bool):
+            return "any"
+        return _orig_json_schema_to_python_type(schema, defs)
+
+    gc_utils.get_type = _get_type_patched
+    gc_utils._json_schema_to_python_type = _json_schema_to_python_type_patched
+except Exception:
+    pass
+
+DATA = []
+JSON_PATH = ""
+CSV_PATH = ""
+DATA_DIR = ""
+
+
+def load_captions(json_path: str):
+    with open(json_path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+    # Ensure keys exist
+    for item in data:
+        item.setdefault("raw_caption", "")
+        item.setdefault("final_caption", item.get("raw_caption", ""))
+    return data
+
+
+def save_files(data, json_path, csv_path):
+    with open(json_path, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+    with open(csv_path, "w", encoding="utf-8", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=["image", "raw_caption", "final_caption"])
+        writer.writeheader()
+        for row in data:
+            writer.writerow(
+                {
+                    "image": row.get("image", ""),
+                    "raw_caption": row.get("raw_caption", ""),
+                    "final_caption": row.get("final_caption", ""),
+                }
+            )
+
+
+def clamp_index(idx, length):
+    if length == 0:
+        return 0
+    return max(0, min(idx, length - 1))
+
+
+def get_record(idx):
+    if not DATA:
+        return None, 0
+    idx = clamp_index(idx, len(DATA))
+    return DATA[idx], idx
+
+
+def progress_text(idx):
+    n = len(DATA)
+    if n == 0:
+        return "No records"
+    return f"**{idx + 1} / {n}**"
+
+
+def display_path(path_value: str):
+    if not path_value:
+        return path_value
+    if os.path.isabs(path_value) and os.path.exists(path_value):
+        return path_value
+    # Windows path inside container -> map to mounted /data by filename
+    filename = os.path.basename(path_value.replace("\\", "/"))
+    candidate = os.path.join(DATA_DIR, filename)
+    return candidate
+
+
+def nav(direction, caption_text, idx):
+    if not DATA:
+        return (
+            None,
+            "",
+            "No records",
+            "Nothing to save",
+            idx,
+            gr.update(interactive=False),
+            gr.update(interactive=False),
+            gr.update(interactive=False),
+            gr.update(interactive=False),
+            gr.update(interactive=False),
+        )
+
+    # Save current caption
+    rec, idx = get_record(idx)
+    rec["final_caption"] = caption_text.strip()
+    save_files(DATA, JSON_PATH, CSV_PATH)
+
+    if direction == "next":
+        idx = clamp_index(idx + 1, len(DATA))
+    elif direction == "prev":
+        idx = clamp_index(idx - 1, len(DATA))
+    elif direction == "first":
+        idx = 0
+    elif direction == "last":
+        idx = len(DATA) - 1
+    elif direction == "end":
+        status = "Session ended. Close this tab if you're done."
+        btn_off = gr.update(interactive=False)
+        rec, idx = get_record(idx)
+        return (
+            display_path(rec.get("image", None)),
+            rec.get("final_caption", ""),
+            progress_text(idx),
+            status,
+            idx,
+            btn_off,
+            btn_off,
+            btn_off,
+            btn_off,
+            btn_off,
+        )
+
+    rec, idx = get_record(idx)
+    img_path = display_path(rec.get("image", ""))
+    cap = rec.get("final_caption", "")
+    status = f"Saved {time.strftime('%H:%M:%S')}"
+    btn_on = gr.update(interactive=True)
+    return (
+        img_path,
+        cap,
+        progress_text(idx),
+        status,
+        idx,
+        btn_on,
+        btn_on,
+        btn_on,
+        btn_on,
+        gr.update(interactive=True),
+    )
+
+
+
+def nav_first(caption_text, idx):
+    return nav("first", caption_text, idx)
+
+
+def nav_prev(caption_text, idx):
+    return nav("prev", caption_text, idx)
+
+
+def nav_next(caption_text, idx):
+    return nav("next", caption_text, idx)
+
+
+def nav_last(caption_text, idx):
+    return nav("last", caption_text, idx)
+
+
+def nav_end(caption_text, idx):
+    return nav("end", caption_text, idx)
+
+
+def load_first(idx):
+    if not DATA:
+        off = gr.update(interactive=False)
+        return None, "", "No records", "Nothing to review", idx, off, off, off, off, off
+    rec, idx = get_record(idx)
+    on = gr.update(interactive=True)
+    return (
+        display_path(rec.get("image", "")),
+        rec.get("final_caption", ""),
+        progress_text(idx),
+        "",
+        idx,
+        on,
+        on,
+        on,
+        on,
+        on,
+    )
+
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Simple caption reviewer")
+    parser.add_argument("--captions", required=True, help="Path to captions.json")
+    parser.add_argument("--csv", required=True, help="Path to captions.csv")
+    parser.add_argument("--concept", required=False, default="", help="Concept name (display only)")
+    parser.add_argument("--port", type=int, default=7860, help="Port for Gradio UI")
+    args = parser.parse_args()
+
+    global DATA, JSON_PATH, CSV_PATH, DATA_DIR
+    DATA = load_captions(args.captions)
+    JSON_PATH = args.captions
+    CSV_PATH = args.csv
+    DATA_DIR = os.path.dirname(args.captions)
+
+    title = "Caption Review"
+    if args.concept:
+        title += f" – {args.concept}"
+
+    with gr.Blocks(title=title) as demo:
+        gr.Markdown(f"### {title}")
+        image = gr.Image(type="filepath", label="Image", height=480)
+        caption = gr.Textbox(label="Caption", lines=4)
+        progress = gr.Markdown()
+        status = gr.Markdown()
+
+        state_holder = gr.State(0)
+
+        with gr.Row():
+            first_btn = gr.Button("<<", min_width=60)
+            prev_btn = gr.Button("<", min_width=60)
+            next_btn = gr.Button(">", min_width=60)
+            last_btn = gr.Button(">>", min_width=60)
+            end_btn = gr.Button("End Task", variant="stop")
+
+        demo.load(
+            load_first,
+            inputs=state_holder,
+            outputs=[image, caption, progress, status, state_holder, first_btn, prev_btn, next_btn, last_btn, end_btn],
+        )
+
+        first_btn.click(
+            nav_first,
+            inputs=[caption, state_holder],
+            outputs=[image, caption, progress, status, state_holder, first_btn, prev_btn, next_btn, last_btn, end_btn],
+        )
+        prev_btn.click(
+            nav_prev,
+            inputs=[caption, state_holder],
+            outputs=[image, caption, progress, status, state_holder, first_btn, prev_btn, next_btn, last_btn, end_btn],
+        )
+        next_btn.click(
+            nav_next,
+            inputs=[caption, state_holder],
+            outputs=[image, caption, progress, status, state_holder, first_btn, prev_btn, next_btn, last_btn, end_btn],
+        )
+        last_btn.click(
+            nav_last,
+            inputs=[caption, state_holder],
+            outputs=[image, caption, progress, status, state_holder, first_btn, prev_btn, next_btn, last_btn, end_btn],
+        )
+        end_btn.click(
+            nav_end,
+            inputs=[caption, state_holder],
+            outputs=[image, caption, progress, status, state_holder, first_btn, prev_btn, next_btn, last_btn, end_btn],
+        )
+    demo.launch(
+        server_name="0.0.0.0",
+        server_port=args.port,
+        share=False,
+        inbrowser=True,
+        allowed_paths=[DATA_DIR],
+    )
+
+
+if __name__ == "__main__":
+    main()
