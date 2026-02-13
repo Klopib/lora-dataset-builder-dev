@@ -42,6 +42,7 @@ $BaseDir = "C:\\AI\\lora-dataset-builder\\lora-training"
 $FlorenceDir = "C:\\AI\\lora-dataset-builder"
 $CaptionScript = Join-Path $FlorenceDir "caption.ps1"
 $ReviewScript  = Join-Path $FlorenceDir "run-review-ui.ps1"
+$ExportScript  = Join-Path $FlorenceDir "export-captions.ps1"
 $ErrorActionPreference = "Stop"
 
 # ─── Helpers ────────────────────────────────────────────────────────────────
@@ -462,7 +463,25 @@ if ($LASTEXITCODE -ne 0) {
     throw "Review UI failed to start (exit code $LASTEXITCODE)"
 }
 
-# ─── Step 9: Create Info File ───────────────────────────────────────────────
+# ─── Step 11: Export captions to .txt ───────────────────────────────────────
+
+Write-Host ""
+Write-Host "Exporting captions to .txt files..." -ForegroundColor Cyan
+
+if (-not (Test-Path $ExportScript)) {
+    throw "export-captions.ps1 not found at $ExportScript"
+}
+
+& pwsh -File $ExportScript `
+    -CaptionsJson $outJson
+
+if ($LASTEXITCODE -ne 0) {
+    throw "Export captions failed (exit code $LASTEXITCODE)"
+}
+
+Write-Host "  ✓ Captions exported: $trainDir\*.txt" -ForegroundColor Green
+
+# ─── Step 12: Create Info File ───────────────────────────────────────────────
 
 $infoContent = @"
 LoRA Dataset: $ConceptName
@@ -479,7 +498,8 @@ Source Images: $SourceImagesPath
 Next Steps:
 1. Captions generated automatically (captions.json/captions.csv) in $trainDir
 2. Review/edit captions in the browser UI (launched automatically)
-3. Close the UI when finished; proceed to training (kohya_ss config step)
+3. Captions exported to per-image .txt files in $trainDir
+4. Close the UI when finished; proceed to training (kohya_ss config step)
 
 Notes:
 - Captions are tag-based and begin with concept name: $ConceptName
