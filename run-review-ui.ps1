@@ -17,6 +17,8 @@ $ErrorActionPreference = "Stop"
 
 if (-not (Test-Path $ImageDir)) { throw "ImageDir not found: $ImageDir" }
 
+Stop-ExistingReviewUI -Port $Port
+
 function Stop-ExistingReviewUI {
   param([int]$Port)
 
@@ -38,11 +40,23 @@ if (Test-Path $RegistryPath) {
     $reg = Get-Content $RegistryPath | ConvertFrom-Json
     $reserved = $reg | Where-Object { $_.port -eq $Port }
     if ($reserved) {
-      $sameApp = $reserved | Where-Object { $_.name -eq "review-ui" -and $_.storage_path -eq $ImageDir }
-      if (-not $sameApp) {
-        throw "Port $Port is already reserved for '$($reserved.name)'. Choose another or update the registry."
-      } else {
+      $nonReview = $reserved | Where-Object { $_.name -ne "review-ui" }
+      if ($nonReview) {
+        throw "Port $Port is already reserved for '$($nonReview[0].name)'. Choose another or update the registry."
+      }
+
+      $samePath = $reserved | Where-Object { $_.name -eq "review-ui" -and $_.storage_path -eq $ImageDir }
+      if ($samePath) {
         Write-Host "Port $Port already reserved for review-ui at $ImageDir; reusing entry." -ForegroundColor DarkGray
+      } else {
+        foreach ($r in $reserved) {
+          if ($r.name -eq "review-ui") {
+            $r.storage_path = $ImageDir
+            $r.created = (Get-Date -Format "yyyy-MM-dd HH:mm:ss")
+          }
+        }
+        $reg | ConvertTo-Json -Depth 5 | Set-Content $RegistryPath -Encoding UTF8
+        Write-Host "Updated review-ui reservation for port $Port to $ImageDir." -ForegroundColor Green
       }
     } else {
       $entry = [pscustomobject]@{
@@ -63,8 +77,6 @@ if (Test-Path $RegistryPath) {
 } else {
   Write-Host "Registry $RegistryPath not found; skipping reservation check." -ForegroundColor Yellow
 }
-
-Stop-ExistingReviewUI -Port $Port
 
 $capsJson = Join-Path $ImageDir "captions.json"
 $capsCsv  = Join-Path $ImageDir "captions.csv"
