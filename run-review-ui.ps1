@@ -17,8 +17,6 @@ $ErrorActionPreference = "Stop"
 
 if (-not (Test-Path $ImageDir)) { throw "ImageDir not found: $ImageDir" }
 
-Stop-ExistingReviewUI -Port $Port
-
 function Stop-ExistingReviewUI {
   param([int]$Port)
 
@@ -34,6 +32,8 @@ function Stop-ExistingReviewUI {
     }
   }
 }
+
+Stop-ExistingReviewUI -Port $Port
 
 if (Test-Path $RegistryPath) {
   try {
