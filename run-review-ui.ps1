@@ -11,6 +11,8 @@ param(
   [string]$RegistryPath = "C:\AI\.registry.json"
 )
 
+$ExportScript = Join-Path $PSScriptRoot "export-captions.ps1"
+
 $ErrorActionPreference = "Stop"
 
 if (-not (Test-Path $ImageDir)) { throw "ImageDir not found: $ImageDir" }
@@ -97,3 +99,14 @@ docker run --rm `
     --port 7861
 
 if ($LASTEXITCODE -ne 0) { throw "review UI container exited with code $LASTEXITCODE" }
+
+
+Write-Host "Exporting captions to .txt files..." -ForegroundColor Cyan
+if (-not (Test-Path $ExportScript)) {
+  throw "export-captions.ps1 not found at $ExportScript"
+}
+& pwsh -File $ExportScript `
+  -CaptionsJson $capsJson `
+  -Overwrite
+if ($LASTEXITCODE -ne 0) { throw "Export captions failed (exit code $LASTEXITCODE)" }
+Write-Host "  ✓ Captions exported: $ImageDir\*.txt" -ForegroundColor Green

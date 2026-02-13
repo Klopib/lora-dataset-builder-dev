@@ -3,6 +3,7 @@ import csv
 import json
 import os
 import time
+import threading
 
 import gradio as gr
 
@@ -32,6 +33,15 @@ DATA = []
 JSON_PATH = ""
 CSV_PATH = ""
 DATA_DIR = ""
+
+
+def schedule_exit(delay=0.5):
+    def _exit_later():
+        time.sleep(delay)
+        os._exit(0)
+
+    t = threading.Thread(target=_exit_later, daemon=True)
+    t.start()
 
 
 def load_captions(json_path: str):
@@ -123,6 +133,7 @@ def nav(direction, caption_text, idx):
         status = "Session ended. Close this tab if you're done."
         btn_off = gr.update(interactive=False)
         rec, idx = get_record(idx)
+        schedule_exit()
         return (
             display_path(rec.get("image", None)),
             rec.get("final_caption", ""),
