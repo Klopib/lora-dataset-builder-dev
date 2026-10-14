@@ -1,3 +1,16 @@
+> [!IMPORTANT]
+> **This repository is archived and superseded.**
+>
+> Active development has moved to
+> **[caidence-lora-dsbuilder](https://github.com/Klopib/caidence-lora-dsbuilder)**.
+>
+> The code here is an earlier prototype and is kept only for history. It
+> contains known defects in the captioning path that were fixed in the new
+> repository, including captions being silently truncated mid-sentence and
+> grammar damage from pronoun substitution. Do not use it to build a dataset.
+
+---
+
 # LoRA Dataset Builder (dev)
 
 Local tooling to build and review LoRA training datasets using a Florence-2 captioning API and a lightweight browser review UI. This repo is intentionally dev-focused so the code can be shared and iterated quickly.
